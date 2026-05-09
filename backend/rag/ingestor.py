@@ -19,7 +19,28 @@ import html2text
 import requests
 from bs4 import BeautifulSoup
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+# ---------------------------------------------------------------------------
+# Markdown semantic splitter
+# ---------------------------------------------------------------------------
+def split_markdown_semantically(markdown_text):
+    headers_to_split_on = [
+        ("#", "Header 1"),
+        ("##", "Header 2"),
+        ("###", "Header 3"),
+    ]
+    markdown_splitter = MarkdownHeaderTextSplitter(
+        headers_to_split_on=headers_to_split_on,
+        strip_headers=False
+    )
+    md_header_splits = markdown_splitter.split_text(markdown_text)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=_CHUNK_SIZE,
+        chunk_overlap=_CHUNK_OVERLAP,
+    )
+    final_chunks = text_splitter.split_documents(md_header_splits)
+    return final_chunks
 
 from rag.chroma_client import get_vectorstore
 
@@ -124,16 +145,29 @@ def ingest_file(path: Path) -> int:
     suffix = path.suffix.lower()
     source = str(path.resolve())
 
-    if suffix in (".txt", ".md"):
+    if suffix == ".txt":
         text = _load_text_file(path)
         doc_type = "text"
+        docs = _split_and_tag(text, source, doc_type)
+    elif suffix == ".md":
+        text = _load_text_file(path)
+        doc_type = "markdown"
+        # Use semantic markdown splitter
+        md_chunks = split_markdown_semantically(text)
+        docs = [
+            Document(
+                page_content=chunk.page_content,
+                metadata={"source": source, "type": doc_type, "chunk_index": i, **chunk.metadata},
+            )
+            for i, chunk in enumerate(md_chunks)
+        ]
     elif suffix == ".pdf":
         text = _load_pdf(path)
         doc_type = "pdf"
+        docs = _split_and_tag(text, source, doc_type)
     else:
         raise ValueError(f"Unsupported file type: {suffix!r}. Supported: .txt, .md, .pdf")
 
-    docs = _split_and_tag(text, source, doc_type)
     if not docs:
         return 0
 

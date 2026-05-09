@@ -38,3 +38,4 @@ workspace/*
 # front-end build
 frontend/dist/
 chroma_db/
+rag_docs/

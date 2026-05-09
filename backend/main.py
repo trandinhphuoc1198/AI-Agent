@@ -32,15 +32,18 @@ async def lifespan(app: FastAPI):
 
     # Scan and ingest all files already present in rag_docs/
     def _startup_ingest() -> None:
+        print(f"Scanning {rag_docs_dir} for files to ingest...")
         for p in rag_docs_dir.rglob("*"):
             if p.is_file() and p.suffix.lower() in _SUPPORTED_SUFFIXES:
                 try:
+                    print(f"Ingesting {p}...")
                     n = ingest_file(p)
                     logger.info("RAG startup: ingested %d chunk(s) from %s", n, p)
                 except Exception as exc:
+                    print(f"Error ingesting {p}: {exc}")
                     logger.warning("RAG startup: skipped %s — %s", p, exc)
 
-    await asyncio.get_event_loop().run_in_executor(None, _startup_ingest)
+    # await asyncio.get_event_loop().run_in_executor(None, _startup_ingest)
 
     observer = await asyncio.get_event_loop().run_in_executor(None, start_watcher)
 
