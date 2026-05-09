@@ -45,7 +45,6 @@ describe("SettingsPanel", () => {
   it("loads cmd_mode from /api/config on mount", async () => {
     render(<SettingsPanel />);
     await waitFor(() => screen.getByDisplayValue("test-model"));
-    // 'permission' button should be visually active (blue)
     expect(screen.getByText("permission")).toBeInTheDocument();
   });
 
@@ -57,67 +56,80 @@ describe("SettingsPanel", () => {
     expect(screen.getByDisplayValue("new-model")).toBeInTheDocument();
   });
 
-  it("toggles cmd_mode to bypass when bypass button is clicked", async () => {
+  it("auto-saves model on blur when value changed", async () => {
     render(<SettingsPanel />);
     await waitFor(() => screen.getByDisplayValue("test-model"));
-    fireEvent.click(screen.getByText("bypass"));
-    // The state changed; no error thrown and the button is still visible
-    expect(screen.getByText("bypass")).toBeInTheDocument();
-  });
-
-  it("calls PUT /api/config when Save is clicked", async () => {
-    render(<SettingsPanel />);
-    await waitFor(() => screen.getByDisplayValue("test-model"));
-    fireEvent.click(screen.getByText("Save"));
+    const input = screen.getByDisplayValue("test-model");
+    fireEvent.change(input, { target: { value: "my-new-model" } });
+    fireEvent.blur(input);
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
         "/api/config",
         expect.objectContaining({ method: "PUT" })
       );
+      const putCall = global.fetch.mock.calls.find(([, o]) => o?.method === "PUT");
+      const body = JSON.parse(putCall[1].body);
+      expect(body).toMatchObject({ model: "my-new-model" });
     });
   });
 
-  it("sends correct JSON body on Save", async () => {
+  it("does not save on blur if value is unchanged", async () => {
     render(<SettingsPanel />);
     await waitFor(() => screen.getByDisplayValue("test-model"));
-    fireEvent.click(screen.getByText("Save"));
+    const input = screen.getByDisplayValue("test-model");
+    fireEvent.blur(input);
+    // Only the initial GET should have been called, no PUT
+    const putCalls = global.fetch.mock.calls.filter(([, o]) => o?.method === "PUT");
+    expect(putCalls).toHaveLength(0);
+  });
+
+  it("auto-saves model on Enter key", async () => {
+    render(<SettingsPanel />);
+    await waitFor(() => screen.getByDisplayValue("test-model"));
+    const input = screen.getByDisplayValue("test-model");
+    fireEvent.change(input, { target: { value: "enter-model" } });
+    fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => {
-      const [, opts] = global.fetch.mock.calls.find(
-        ([, o]) => o?.method === "PUT"
-      );
-      const body = JSON.parse(opts.body);
-      expect(body).toMatchObject({ model: "test-model", cmd_mode: "permission" });
+      const putCall = global.fetch.mock.calls.find(([, o]) => o?.method === "PUT");
+      expect(putCall).toBeTruthy();
     });
   });
 
-  it("shows '✓ Saved' feedback after a successful save", async () => {
+  it("auto-saves cmd_mode when bypass button is clicked", async () => {
     render(<SettingsPanel />);
     await waitFor(() => screen.getByDisplayValue("test-model"));
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("bypass"));
+    await waitFor(() => {
+      const putCall = global.fetch.mock.calls.find(([, o]) => o?.method === "PUT");
+      const body = JSON.parse(putCall[1].body);
+      expect(body).toMatchObject({ cmd_mode: "bypass" });
+    });
+  });
+
+  it("shows '✓ applied' feedback after a successful save", async () => {
+    render(<SettingsPanel />);
+    await waitFor(() => screen.getByDisplayValue("test-model"));
+    fireEvent.click(screen.getByText("bypass"));
     await waitFor(() =>
-      expect(screen.getByText(/✓ Saved/)).toBeInTheDocument()
+      expect(screen.getByText(/✓ applied/i)).toBeInTheDocument()
     );
   });
 
-  it("shows error message when GET /api/config fails", async () => {
+  it("shows 'failed' status when GET /api/config fails", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
     render(<SettingsPanel />);
     await waitFor(() =>
-      expect(
-        screen.getByText(/Failed to load settings/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/failed/i)).toBeInTheDocument()
     );
   });
 
-  it("shows error message when PUT /api/config fails", async () => {
+  it("shows 'failed' status when PUT /api/config fails", async () => {
     setupFetch({ put: { ok: false } });
     render(<SettingsPanel />);
     await waitFor(() => screen.getByDisplayValue("test-model"));
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("bypass"));
     await waitFor(() =>
-      expect(
-        screen.getByText(/Failed to save settings/i)
-      ).toBeInTheDocument()
+      expect(screen.getByText(/failed/i)).toBeInTheDocument()
     );
   });
 });
