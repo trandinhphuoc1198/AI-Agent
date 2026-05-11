@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     chroma_persist_dir: str = str(_PROJECT_ROOT / "chroma_db")
     rag_collection_name: str = "default"
     rag_top_k: int = 5
+    rag_score_threshold: float = 1.0
     openai_api_key: str = ""
 
     @field_validator("workspace_dir", "logs_dir", "rag_docs_dir", "chroma_persist_dir", mode="before")

@@ -30,11 +30,15 @@ async def lifespan(app: FastAPI):
     rag_docs_dir = Path(settings.rag_docs_dir)
     rag_docs_dir.mkdir(parents=True, exist_ok=True)
 
-    # Scan and ingest all files already present in rag_docs/
+    # Scan and ingest only new/changed files present in rag_docs/
     def _startup_ingest() -> None:
-        print(f"Scanning {rag_docs_dir} for files to ingest...")
+        from rag.ingestor import is_file_ingested
+        print(f"Scanning {rag_docs_dir} for new or changed files...")
         for p in rag_docs_dir.rglob("*"):
             if p.is_file() and p.suffix.lower() in _SUPPORTED_SUFFIXES:
+                if is_file_ingested(p):
+                    print(f"Skipping (already ingested): {p}")
+                    continue
                 try:
                     print(f"Ingesting {p}...")
                     n = ingest_file(p)
@@ -43,7 +47,7 @@ async def lifespan(app: FastAPI):
                     print(f"Error ingesting {p}: {exc}")
                     logger.warning("RAG startup: skipped %s — %s", p, exc)
 
-    # await asyncio.get_event_loop().run_in_executor(None, _startup_ingest)
+    await asyncio.get_event_loop().run_in_executor(None, _startup_ingest)
 
     observer = await asyncio.get_event_loop().run_in_executor(None, start_watcher)
 

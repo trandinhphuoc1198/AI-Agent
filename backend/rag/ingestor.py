@@ -13,6 +13,8 @@ re-ingesting the same source replaces (rather than duplicates) existing chunks.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from pathlib import Path
 
 import html2text
@@ -43,6 +45,39 @@ def split_markdown_semantically(markdown_text):
     return final_chunks
 
 from rag.chroma_client import get_vectorstore
+
+# ---------------------------------------------------------------------------
+# Ingestion manifest — tracks which files have already been ingested so the
+# startup scan can skip them on subsequent runs.
+# ---------------------------------------------------------------------------
+_MANIFEST_PATH = Path(__file__).parent / ".ingested_manifest.json"
+
+
+def _load_manifest() -> dict[str, float]:
+    """Return the manifest dict mapping resolved path -> mtime."""
+    try:
+        return json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_manifest(manifest: dict[str, float]) -> None:
+    _MANIFEST_PATH.write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+
+
+def is_file_ingested(path: Path) -> bool:
+    """Return True if *path* is already ingested and has not changed since."""
+    source = str(path.resolve())
+    manifest = _load_manifest()
+    if source not in manifest:
+        return False
+    try:
+        return os.path.getmtime(path) == manifest[source]
+    except OSError:
+        return False
+
 
 # ---------------------------------------------------------------------------
 # Chunking configuration
@@ -174,6 +209,12 @@ def ingest_file(path: Path) -> int:
     _delete_source(source)
     ids = [_doc_id(source, i) for i in range(len(docs))]
     get_vectorstore().add_documents(docs, ids=ids)
+
+    # Update manifest with the file's current mtime
+    manifest = _load_manifest()
+    manifest[source] = os.path.getmtime(path)
+    _save_manifest(manifest)
+
     return len(docs)
 
 
@@ -211,3 +252,7 @@ def delete_source(source: str) -> None:
         (resolved file path or URL string).
     """
     _delete_source(source)
+    # Remove from manifest so the file will be re-ingested if it reappears
+    manifest = _load_manifest()
+    manifest.pop(source, None)
+    _save_manifest(manifest)

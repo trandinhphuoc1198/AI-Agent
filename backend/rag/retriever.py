@@ -35,9 +35,16 @@ def retrieve(query: str) -> str:
     if not results:
         return ""
 
+    # Filter by score threshold — Chroma returns L2 distance (lower = more similar).
+    # Only inject chunks whose distance is at or below the configured threshold.
+    threshold = s.rag_score_threshold
+    results = [(doc, score) for doc, score in results if score <= threshold]
+
+    if not results:
+        return ""
+
     chunks = []
     for doc, _score in results:
-        source = doc.metadata.get("source", "unknown")
-        chunks.append(f"[Source: {source}]\n{doc.page_content}")
+        chunks.append(f"[Score: {_score}]\n{doc.page_content}")
 
     return "\n\n---\n\n".join(chunks)
