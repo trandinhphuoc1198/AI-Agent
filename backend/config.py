@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     rag_collection_name: str = "default"
     rag_top_k: int = 5
     openai_api_key: str = ""
+    enabled_tools: list[str] = []  # empty = all tools enabled
 
     @field_validator("workspace_dir", "logs_dir", "rag_docs_dir", "chroma_persist_dir", mode="before")
     @classmethod

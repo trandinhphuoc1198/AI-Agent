@@ -47,7 +47,46 @@ def test_get_config_response_shape(client, monkeypatch):
     response = client.get("/api/config")
     assert response.status_code == 200
     data = response.json()
-    assert set(data.keys()) == {"model", "cmd_mode"}
+    assert {"model", "cmd_mode", "enabled_tools"}.issubset(data.keys())
+
+
+# ---------------------------------------------------------------------------
+# GET /api/tools
+# ---------------------------------------------------------------------------
+
+def test_get_tools_returns_list(client, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    import config
+    config.reset_settings()
+
+    response = client.get("/api/tools")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) > 0
+
+
+def test_get_tools_items_have_name_and_enabled(client, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    import config
+    config.reset_settings()
+
+    response = client.get("/api/tools")
+    assert response.status_code == 200
+    for item in response.json():
+        assert "name" in item
+        assert "enabled" in item
+        assert isinstance(item["enabled"], bool)
+
+
+def test_get_tools_all_enabled_by_default(client, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.delenv("ENABLED_TOOLS", raising=False)
+    import config
+    config.reset_settings()
+
+    response = client.get("/api/tools")
+    assert all(item["enabled"] for item in response.json())
 
 
 # ---------------------------------------------------------------------------

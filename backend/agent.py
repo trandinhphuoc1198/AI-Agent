@@ -109,8 +109,14 @@ def _make_llm() -> ChatOpenAI:
 
 
 def _make_agent(llm: ChatOpenAI):
-    """Return a compiled LangGraph agent graph."""
-    return create_agent(model=llm, tools=ALL_TOOLS, system_prompt=SYSTEM_PROMPT)
+    """Return a compiled LangGraph agent graph using only currently enabled tools."""
+    s = get_settings()
+    if s.enabled_tools:
+        enabled = set(s.enabled_tools)
+        active_tools = [t for t in ALL_TOOLS if t.name in enabled]
+    else:
+        active_tools = ALL_TOOLS
+    return create_agent(model=llm, tools=active_tools, system_prompt=SYSTEM_PROMPT)
 
 
 # ---------------------------------------------------------------------------
