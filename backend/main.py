@@ -79,29 +79,51 @@ app.add_middleware(
 class ConfigUpdate(BaseModel):
     model: Optional[str] = None
     cmd_mode: Optional[Literal["bypass", "permission"]] = None
+    enabled_tools: Optional[list[str]] = None
 
 
 # ---------------------------------------------------------------------------
 # REST endpoints
 # ---------------------------------------------------------------------------
 
+def _all_tool_names() -> list[str]:
+    from tools import ALL_TOOLS
+    return [t.name for t in ALL_TOOLS]
+
+
+def _enabled_tool_names(s) -> list[str]:
+    return list(s.enabled_tools) if s.enabled_tools else _all_tool_names()
+
+
 @app.get("/api/config")
 def read_config() -> dict:
     """Return the current public configuration (API key is never exposed)."""
     s = get_settings()
-    return {"model": s.model, "cmd_mode": s.cmd_mode}
+    return {"model": s.model, "cmd_mode": s.cmd_mode, "enabled_tools": _enabled_tool_names(s)}
+
+
+@app.get("/api/tools")
+def list_tools() -> list[dict]:
+    """Return all available tools with their enabled/disabled status."""
+    from tools import ALL_TOOLS
+    s = get_settings()
+    enabled = set(_enabled_tool_names(s))
+    return [{"name": t.name, "enabled": t.name in enabled} for t in ALL_TOOLS]
 
 
 @app.put("/api/config")
 def write_config(update: ConfigUpdate) -> dict:
-    """Persist model and/or cmd_mode changes to .env, then reload settings."""
+    """Persist model, cmd_mode, and/or enabled_tools changes to .env, then reload settings."""
+    import json as _json
     if update.model is not None:
         update_env_file("MODEL", update.model)
     if update.cmd_mode is not None:
         update_env_file("CMD_MODE", update.cmd_mode)
+    if update.enabled_tools is not None:
+        update_env_file("ENABLED_TOOLS", _json.dumps(update.enabled_tools))
     reset_settings()
     s = get_settings()
-    return {"model": s.model, "cmd_mode": s.cmd_mode}
+    return {"model": s.model, "cmd_mode": s.cmd_mode, "enabled_tools": _enabled_tool_names(s)}
 
 
 # ---------------------------------------------------------------------------

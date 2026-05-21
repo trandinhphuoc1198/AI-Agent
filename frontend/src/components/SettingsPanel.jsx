@@ -14,30 +14,49 @@ export default function SettingsPanel() {
   const [model, setModel] = useState("");
   const [committed, setCommitted] = useState(""); // last saved value
   const [cmdMode, setCmdMode] = useState("permission");
-  const [status, setStatus] = useState(null); // null | "saving" | "saved" | "error"
+  const [allTools, setAllTools] = useState([]);
+  const [enabledTools, setEnabledTools] = useState(new Set());
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetch("/api/config")
-      .then((r) => r.json())
-      .then((data) => {
-        setModel(data.model ?? "");
-        setCommitted(data.model ?? "");
-        setCmdMode(data.cmd_mode ?? "permission");
+    Promise.all([
+      fetch("/api/config").then((r) => r.json()),
+      fetch("/api/tools").then((r) => r.json()),
+    ])
+      .then(([config, tools]) => {
+        setModel(config.model ?? "");
+        setCmdMode(config.cmd_mode ?? "permission");
+        setAllTools(tools);
+        setEnabledTools(new Set(tools.filter((t) => t.enabled).map((t) => t.name)));
       })
       .catch(() => setStatus("error"));
   }, []);
 
-  const save = async (patch) => {
-    setStatus("saving");
+  const toggleTool = (name) => {
+    setEnabledTools((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setError(null);
     try {
-      const data = await applyConfig(patch);
-      if (patch.model !== undefined) {
-        setModel(data.model ?? patch.model);
-        setCommitted(data.model ?? patch.model);
-      }
-      if (patch.cmd_mode !== undefined) setCmdMode(data.cmd_mode ?? patch.cmd_mode);
-      setStatus("saved");
-      setTimeout(() => setStatus(null), 1500);
+      const res = await fetch("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, cmd_mode: cmdMode, enabled_tools: [...enabledTools] }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      const data = await res.json();
+      setModel(data.model ?? model);
+      setCmdMode(data.cmd_mode ?? cmdMode);
+      if (data.enabled_tools) setEnabledTools(new Set(data.enabled_tools));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } catch {
       setStatus("error");
       setTimeout(() => setStatus(null), 3000);
@@ -99,11 +118,11 @@ export default function SettingsPanel() {
       {/* Command mode toggle */}
       <div className="space-y-1">
         <p className="text-xs text-gray-400">Command Mode</p>
-        <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+        <div className="flex rounded-lg overflow-hidden border border-gray-700 divide-x divide-gray-700 text-xs">
           {["permission", "bypass"].map((mode) => (
             <button
               key={mode}
-              className={`flex-1 py-1.5 capitalize transition-colors ${
+              className={`flex-1 py-1.5 text-center capitalize transition-colors ${
                 cmdMode === mode
                   ? "bg-blue-600 text-white"
                   : "bg-gray-800 text-gray-400 hover:bg-gray-700"
@@ -115,6 +134,43 @@ export default function SettingsPanel() {
           ))}
         </div>
       </div>
+
+      {allTools.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400">Tools</p>
+          <div className="space-y-1.5">
+            {allTools.map(({ name }) => {
+              const isEnabled = enabledTools.has(name);
+              return (
+                <div key={name} className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-300 font-mono truncate">{name}</span>
+                  <button
+                    role="switch"
+                    aria-checked={isEnabled}
+                    onClick={() => toggleTool(name)}
+                    className={`relative flex-shrink-0 w-8 h-4 rounded-full transition-colors ${
+                      isEnabled ? "bg-blue-600" : "bg-gray-600"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                        isEnabled ? "translate-x-4" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <button
+        className="w-full py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-medium transition-colors"
+        onClick={handleSave}
+      >
+        {saved ? "✓ Saved" : "Save"}
+      </button>
     </div>
   );
 }

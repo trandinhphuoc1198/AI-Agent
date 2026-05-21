@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     rag_top_k: int = 5
     rag_score_threshold: float = 1.0
     openai_api_key: str = ""
+    enabled_tools: list[str] = []  # empty = all tools enabled
 
     @field_validator("workspace_dir", "logs_dir", "rag_docs_dir", "chroma_persist_dir", mode="before")
     @classmethod
